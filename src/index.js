@@ -6,13 +6,19 @@
 //   - https://developer.mozilla.org/zh-CN/docs/Web/HTTP/X-Frame-Options
 //   - https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/X-XSS-Protection
 
+import Tokens from 'csrf'
 import ipFilter from 'ip-filter'
 import deepmerge from 'deepmerge'
 
+const tokens = new Tokens()
 const DEFAULT_OPTIONS = {
     ip: {
         filter: [],
         enabled: false
+    },
+    csrf: {
+        enabled: false,
+        name: 'csrfToken'
     },
     csp: {
         report: false,
@@ -85,6 +91,33 @@ export default function (options = {}) {
         if (options.ip.enabled && !ipFilter(ctx.ip, options.ip.filter)) {
             ctx.status = 403
             return
+        }
+
+        if (options.csrf.enabled) {
+            let csrfToken, csrfSecret, method, name
+
+            name = options.csrf.name
+            method = ctx.method.toUpperCase()
+            csrfToken = ctx.headers['x-csrf-token']
+            csrfSecret = ctx.cookies.get(`${name}Key`)
+
+            if (['POST', 'PUT', 'DELETE'].includes(method)) {
+                if (!csrfToken || !csrfSecret) {
+                    ctx.status = 403
+                    return
+                }
+                
+                if (!tokens.verify(csrfToken, csrfSecret)) {
+                    ctx.status = 403
+                    return
+                }
+            }
+
+            csrfSecret = tokens.secretSync()
+            csrfToken = tokens.create(csrfSecret)
+            
+            ctx.cookies.set(`${name}Key`, csrfSecret)
+            ctx.cookies.set(name, csrfToken, { httpOnly: false })
         }
 
         if (options.csp.enabled) {

@@ -51,6 +51,33 @@ exports.default = function (options = {}) {
             return;
         }
 
+        if (options.csrf.enabled) {
+            let csrfToken, csrfSecret, method, name;
+
+            name = options.csrf.name;
+            method = ctx.method.toUpperCase();
+            csrfToken = ctx.headers['x-csrf-token'];
+            csrfSecret = ctx.cookies.get(`${name}Key`);
+
+            if (['POST', 'PUT', 'DELETE'].includes(method)) {
+                if (!csrfToken || !csrfSecret) {
+                    ctx.status = 403;
+                    return;
+                }
+
+                if (!tokens.verify(csrfToken, csrfSecret)) {
+                    ctx.status = 403;
+                    return;
+                }
+            }
+
+            csrfSecret = tokens.secretSync();
+            csrfToken = tokens.create(csrfSecret);
+
+            ctx.cookies.set(`${name}Key`, csrfSecret);
+            ctx.cookies.set(name, csrfToken, { httpOnly: false });
+        }
+
         if (options.csp.enabled) {
             if (options.csp.report) {
                 ctx.set('Content-Security-Policy-Report-Only', cspValue);
@@ -83,6 +110,10 @@ exports.default = function (options = {}) {
     };
 };
 
+var _csrf = require('csrf');
+
+var _csrf2 = _interopRequireDefault(_csrf);
+
 var _ipFilter = require('ip-filter');
 
 var _ipFilter2 = _interopRequireDefault(_ipFilter);
@@ -93,7 +124,7 @@ var _deepmerge2 = _interopRequireDefault(_deepmerge);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-// Thanks to:
+const tokens = new _csrf2.default(); // Thanks to:
 //   - https://developer.mozilla.org/zh-CN/docs/Web/Security/CSP/Using_Content_Security_Policy
 //   - https://developer.mozilla.org/zh-CN/docs/Security/HTTP_Strict_Transport_Security
 //   - https://msdn.microsoft.com/zh-cn/library/jj542450(v=vs.85).aspx
@@ -105,6 +136,10 @@ const DEFAULT_OPTIONS = {
     ip: {
         filter: [],
         enabled: false
+    },
+    csrf: {
+        enabled: false,
+        name: 'csrfToken'
     },
     csp: {
         report: false,
